@@ -1,0 +1,11 @@
+{
+  "name": "dp-sports-cards",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "scrape": "node scraper/scrape.js"
+  },
+  "dependencies": {
+    "puppeteer": "^22.0.0"
+  }
+}
