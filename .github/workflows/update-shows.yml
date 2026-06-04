@@ -1,0 +1,37 @@
+name: Update Upcoming Shows
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'   # every 2 hours, automatically
+  workflow_dispatch:          # also lets you click "Run workflow" manually anytime
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run show scraper
+        run: node scraper/scrape.js
+
+      - name: Commit updated shows.json if changed
+        run: |
+          git config --global user.name  "Shows Bot"
+          git config --global user.email "bot@dpsportscards.local"
+          git add shows.json
+          git diff --staged --quiet || (git commit -m "Update upcoming shows [skip ci]" && git push)
