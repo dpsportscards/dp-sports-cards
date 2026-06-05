@@ -1,94 +1,95 @@
 // DP Sports Cards — Whatnot Show Scraper
-// Uses the browser-based approach that previously found 5 shows successfully.
-// Key fix: extended candidates list to handle GraphQL edges/node pattern,
-// which is likely where show titles are stored.
+// Parses the rendered page body text, which contains all show data.
+// The 19 API calls are analytics/tracking only — show data is in the DOM text.
 
 const puppeteer = require('puppeteer-core');
 const fs   = require('fs');
 const path = require('path');
 
-const WHATNOT_URL  = 'https://www.whatnot.com/user/polakoff/shows';
-const CHROME_PATH  = process.env.CHROME_PATH;
+const WHATNOT_URL = 'https://www.whatnot.com/user/polakoff/shows';
+const CHROME_PATH = process.env.CHROME_PATH;
 if (!CHROME_PATH) { console.error('CHROME_PATH not set'); process.exit(1); }
 
-function formatDateTime(raw) {
-  if (!raw) return { date: '', time: '' };
-  try {
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return { date: String(raw), time: '' };
-    return {
-      date: d.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric', timeZone:'America/New_York' }),
-      time: d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short', timeZone:'America/New_York' }),
-    };
-  } catch { return { date: String(raw), time: '' }; }
-}
+const DAY_MAP = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
 
-function classifyType(title) {
+function classifyType(title, date) {
   const t = (title||'').toLowerCase();
-  if (t.includes('monday') || t.includes('big show')) return 'big';
+  const d = (date||'').toLowerCase();
+  if (d.includes('monday') || t.includes('big show')) return 'big';
   if (t.includes('modern') || t.includes('value') || t.includes('prizm') || t.includes('chrome')) return 'modern';
   return 'popup';
 }
 
-// Pull a title from a show object — tries every known field name
-function getTitle(s) {
-  const fields = ['title','name','streamTitle','showTitle','displayTitle',
-                  'headline','broadcastTitle','eventTitle','showName','label','subject'];
-  for (const f of fields) {
-    if (s[f] && typeof s[f] === 'string' && s[f].trim().length > 2) return s[f].trim();
+// Parse the body text. Confirmed format from live log:
+//   polakoff
+//   Mon, Jun 15, 5:00 PM   ← or just "Mon 5:00 PM" for nearest show
+//   21                     ← some counter (ignore)
+//   Vintage baseball beater beauties! ...  ← TITLE
+//   Singles, $1 Starts, Vintage            ← tags (ignore)
+//   polakoff
+//   ...
+function parseShows(bodyText, showLinks) {
+  const lines = bodyText.split('\n').map(l => l.trim()).filter(Boolean);
+
+  const startIdx = lines.findIndex(l => /Upcoming Shows/i.test(l));
+  if (startIdx === -1) { console.log('Could not find "Upcoming Shows" in body text'); return []; }
+
+  const endIdx = lines.findIndex((l, i) => i > startIdx && /^(Whatnot|© \d{4})/i.test(l));
+  const relevant = lines.slice(startIdx + 1, endIdx === -1 ? undefined : endIdx);
+  console.log(`Parsing ${relevant.length} lines between "Upcoming Shows" and page footer`);
+
+  const shows = [];
+  let i = 0;
+  let showIndex = 0;
+
+  while (i < relevant.length) {
+    // Each show block starts with the seller handle
+    if (relevant[i] !== 'polakoff') { i++; continue; }
+    i++;
+
+    // Date/time line: "Mon 5:00 PM" or "Mon, Jun 15, 5:00 PM"
+    const dtLine = relevant[i] || '';
+    if (!/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(dtLine)) { i++; continue; }
+    i++;
+
+    // Skip the counter number (30, 21, 19, 11, 7…)
+    if (/^\d+$/.test(relevant[i] || '')) i++;
+
+    // Title is the next non-empty line
+    const title = relevant[i] || '';
+    if (!title) { i++; continue; }
+    i++;
+
+    // Skip tag lines (comma-separated category strings)
+    while (i < relevant.length && relevant[i] !== 'polakoff' && relevant[i].includes(',')) i++;
+
+    // ── Parse date & time ──────────────────────────────────────
+    let date = '', time = '';
+
+    // Full: "Mon, Jun 15, 5:00 PM"
+    const full = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+([A-Za-z]+\s+\d+),?\s+(\d+:\d+\s*[AP]M)/i);
+    // Short: "Mon 5:00 PM"
+    const short = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d+:\d+\s*[AP]M)/i);
+
+    if (full) {
+      date = `${DAY_MAP[full[1].toLowerCase()]}, ${full[2]}`;
+      time = `${full[3]} ET`;
+    } else if (short) {
+      date = DAY_MAP[short[1].toLowerCase()] || short[1];
+      time = `${short[2]} ET`;
+    } else {
+      date = dtLine;
+    }
+
+    // URL: use matched show link if available, otherwise shows page
+    const url = showLinks[showIndex] || WHATNOT_URL;
+    showIndex++;
+
+    shows.push({ title, date, time, type: classifyType(title, date), url });
+    console.log(`  [${shows.length}] "${title}" | ${date} | ${time} | ${url}`);
   }
-  return '';
-}
 
-// Pull a start time from a show object
-function getStartTime(s) {
-  const fields = ['startTime','scheduledAt','startsAt','start_time',
-                  'scheduledStartTime','liveAt','goLiveAt','scheduledStart'];
-  for (const f of fields) { if (s[f] != null) return s[f]; }
-  return '';
-}
-
-// Helper: unwrap GraphQL edges → nodes
-function edges(obj) {
-  return Array.isArray(obj?.edges)
-    ? obj.edges.map(e => e?.node).filter(Boolean)
-    : null;
-}
-
-// Given a parsed JSON API response, return the best array of show objects found
-function findShows(json) {
-  const d = json?.data;
-  const candidates = [
-    // — direct arrays (non-GraphQL) ——————————————————
-    d?.shows,
-    d?.streams,
-    d?.scheduledShows,
-    d?.upcomingShows,
-    d?.listings,
-    d?.seller?.shows,
-    d?.seller?.scheduledShows,
-    d?.seller?.upcomingShows,
-    d?.user?.shows,
-    d?.user?.scheduledShows,
-    d?.user?.upcomingShows,
-    json?.shows,
-    json?.streams,
-    json?.scheduledShows,
-    json?.upcomingShows,
-    // — GraphQL edges/node pattern ————————————————————
-    edges(d?.shows),
-    edges(d?.streams),
-    edges(d?.scheduledShows),
-    edges(d?.upcomingShows),
-    edges(d?.listings),
-    edges(d?.seller?.shows),
-    edges(d?.seller?.scheduledShows),
-    edges(d?.seller?.upcomingShows),
-    edges(d?.user?.shows),
-    edges(d?.user?.scheduledShows),
-    edges(d?.user?.upcomingShows),
-  ];
-  return candidates.find(v => Array.isArray(v) && v.length > 0) || null;
+  return shows;
 }
 
 async function scrape() {
@@ -108,71 +109,62 @@ async function scrape() {
     await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-    // Capture every JSON API response Whatnot's React app makes
-    const apiResponses = [];
-    page.on('response', async response => {
-      const ct = response.headers()['content-type'] || '';
-      if (!ct.includes('application/json')) return;
-      try { apiResponses.push({ url: response.url(), json: await response.json() }); } catch {}
-    });
-
     console.log('Loading page…');
     await page.goto(WHATNOT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-    await new Promise(r => setTimeout(r, 4000));  // let JS settle
+    await new Promise(r => setTimeout(r, 4000));
 
     const pageTitle = await page.title();
     console.log('Page title:', pageTitle);
-    console.log('API responses captured:', apiResponses.length);
 
-    // ── Try every captured API response ──────────────────────────
-    for (const { url, json } of apiResponses) {
-      const found = findShows(json);
-      if (!found) continue;
+    // Get all unique Whatnot links — look for show-specific URLs
+    const showLinks = await page.evaluate((baseUrl) => {
+      const allLinks = [...document.querySelectorAll('a[href]')]
+        .map(a => a.href)
+        .filter((h, i, arr) => arr.indexOf(h) === i); // unique
 
-      console.log(`\n✓ Found ${found.length} shows in: ${url.slice(0,100)}`);
+      console.log('All links:', allLinks.join('\n')); // for debugging
 
-      // Log the complete first show so we can see ALL field names & values
-      console.log('\n=== FIRST SHOW OBJECT ===');
-      console.log(JSON.stringify(found[0], null, 2).slice(0, 3000));
-      console.log('Keys:', Object.keys(found[0]).join(', '));
+      // Filter to links that look like individual show pages (not nav/profile links)
+      const navPaths = ['/user/', '/browse', '/login', '/signup', '/blog', '/careers',
+                        '/about', '/faq', '/help', '/terms', '/privacy', '/affiliates',
+                        '/order', '/shipping', '/returns', '/payment', '/contact'];
+      return allLinks.filter(h => {
+        if (!h.includes('whatnot.com')) return false;
+        if (h === baseUrl) return false;
+        try {
+          const p = new URL(h).pathname;
+          return !navPaths.some(n => p.startsWith(n));
+        } catch { return false; }
+      });
+    }, WHATNOT_URL);
 
-      shows = found.map(s => {
-        const startTime = getStartTime(s);
-        const { date, time } = formatDateTime(startTime);
-        const title = getTitle(s);
-        const id = s.id || s.showId || s.streamId || '';
-        const showUrl = s.url || s.shareUrl || s.link ||
-                        (id ? `https://www.whatnot.com/show/${id}` : WHATNOT_URL);
-        console.log(`  → "${title || '(no title)'}" | ${date} ${time}`);
-        return { title, date, time, type: classifyType(title), url: showUrl };
-      }).filter(s => s.date || s.time || s.url !== WHATNOT_URL);
+    console.log(`Show-like links found: ${showLinks.length}`);
+    showLinks.forEach(l => console.log(' ', l));
 
-      if (shows.length > 0) break;
-    }
+    // Get the full rendered body text (this is where the show data lives)
+    const bodyText = await page.evaluate(() => document.body?.innerText || '');
+    console.log(`\nBody text length: ${bodyText.length}`);
 
-    // ── If API came up empty, log all response URLs for diagnosis ─
-    if (shows.length === 0) {
-      console.log('\nNo shows found in API responses. All captured URLs:');
-      apiResponses.forEach(({ url }) => console.log(' ', url.slice(0, 120)));
-
-      // Also dump the page body text to see what rendered
-      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 2000) || '');
-      console.log('\nPage body text:\n', bodyText);
-    }
+    shows = parseShows(bodyText, showLinks);
 
   } finally {
     await browser.close();
   }
 
-  // Deduplicate
+  // Deduplicate by title+date
   const seen = new Set();
-  shows = shows.filter(s => s.url && !seen.has(s.url) && seen.add(s.url)).slice(0, 20);
+  shows = shows.filter(s => {
+    const key = `${s.title}|${s.date}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 20);
 
   const outPath = path.join(__dirname, '..', 'shows.json');
   fs.writeFileSync(outPath, JSON.stringify(shows, null, 2));
 
   console.log(`\n=== SAVED ${shows.length} shows ===`);
-  shows.forEach(s => console.log(`  [${s.type}] "${s.title}" | ${s.date} | ${s.time}`));
+  if (shows.length === 0) console.log('WARNING: No shows saved. Share this log for diagnosis.');
 }
 
 scrape().catch(err => {
