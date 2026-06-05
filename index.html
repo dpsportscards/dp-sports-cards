@@ -170,24 +170,17 @@ nav{background:var(--char);display:flex;align-items:center;justify-content:space
 .shows-handle{font-family:var(--sans);font-size:.85rem;font-weight:700;color:var(--teal-dk);letter-spacing:.04em}
 .shows-handle-sub{font-family:var(--sans);font-size:.64rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--warm-mid);border-bottom:1px solid rgba(109,152,153,.4);padding-bottom:2px}
 .shows-handle-link:hover .shows-handle{color:var(--mustard-dk)}
-.shows-list{display:flex;flex-direction:column;gap:.65rem}
-.show-card{background:var(--white);display:grid;grid-template-columns:86px 1fr auto;align-items:stretch;text-decoration:none;color:var(--char);transition:transform .18s,box-shadow .18s;border:1px solid rgba(109,152,153,.18)}
-.show-card:hover{transform:translateX(4px);box-shadow:-4px 0 0 var(--teal),4px 4px 18px rgba(0,0,0,.09)}
-.show-day{background:var(--teal);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.1rem .5rem;min-width:86px}
-.show-day .day-name{font-family:var(--sans);font-size:.6rem;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(245,240,213,.7);line-height:1}
-.show-day .day-num{font-family:var(--serif);font-size:2rem;font-weight:900;color:var(--white);line-height:1;margin-top:.1rem}
-.show-day.type-big{background:var(--teal-dk)}
-.show-day.type-modern{background:var(--mustard-dk)}
-.show-day.type-popup{background:var(--char-lt)}
-.show-info{padding:1.1rem 1.4rem;display:flex;flex-direction:column;justify-content:center;gap:.25rem}
-.show-badge{font-family:var(--sans);font-size:.58rem;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--teal-dk)}
-.show-badge.type-big{color:var(--teal-dk)}
-.show-badge.type-modern{color:var(--mustard-dk)}
-.show-badge.type-popup{color:var(--warm-mid)}
+.shows-list{display:flex;flex-direction:column;gap:.6rem}
+.show-card{background:var(--white);display:flex;align-items:center;gap:1rem;padding:1.3rem 1.5rem;border:1px solid rgba(109,152,153,.18);border-left:4px solid var(--teal-dk);text-decoration:none;color:var(--char);transition:transform .18s,box-shadow .18s}
+.show-card.type-modern{border-left-color:var(--mustard-dk)}
+.show-card:hover{transform:translateX(5px);box-shadow:-5px 0 0 var(--teal),2px 4px 16px rgba(0,0,0,.08)}
+.show-info{flex:1;display:flex;flex-direction:column;gap:.25rem}
+.show-date-label{font-family:var(--sans);font-size:.65rem;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--teal-dk)}
+.show-card.type-modern .show-date-label{color:var(--mustard-dk)}
 .show-title{font-family:var(--serif);font-size:1.2rem;font-weight:700;color:var(--char);line-height:1.2}
-.show-time{font-family:var(--sans);font-size:.73rem;font-weight:400;color:var(--warm-mid);letter-spacing:.05em}
-.show-arrow{display:flex;align-items:center;padding:0 1.4rem;color:var(--teal);font-size:1.3rem;opacity:.55;transition:opacity .2s,transform .2s}
-.show-card:hover .show-arrow{opacity:1;transform:translateX(3px)}
+.show-time{font-family:var(--sans);font-size:.73rem;font-weight:400;color:var(--warm-mid);letter-spacing:.04em}
+.show-arrow{color:var(--teal);font-size:1.2rem;opacity:.5;transition:opacity .2s,transform .2s;flex-shrink:0}
+.show-card:hover .show-arrow{opacity:1;transform:translateX(4px)}
 .shows-empty{text-align:center;padding:3.5rem 2rem;font-family:var(--serif);font-style:italic;font-size:1.05rem;color:var(--warm-mid);background:var(--white);border:1px solid rgba(109,152,153,.18)}
 .shows-updated{margin-top:1rem;font-size:.65rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--warm-mid);text-align:right}
 .shows-updated a{color:var(--teal-dk);text-decoration:none;border-bottom:1px solid rgba(109,152,153,.35)}
@@ -300,8 +293,6 @@ footer{background:var(--char);border-top:4px solid var(--mustard);padding:2.5rem
   .hamburger{display:flex}
   nav{position:relative}
   .nav-links.open{display:flex;flex-direction:column;position:absolute;top:60px;left:0;right:0;background:var(--char);padding:1.5rem 2rem;gap:1.1rem;border-top:1px solid rgba(109,152,153,.18);z-index:200}
-  .show-card{grid-template-columns:70px 1fr auto}
-  .show-day .day-num{font-size:1.55rem}
   .about-feats{grid-template-columns:1fr}
   .inner{padding:0 1.5rem}
   .hero-text{padding:2.5rem 1.5rem}
@@ -548,7 +539,7 @@ footer{background:var(--char);border-top:4px solid var(--mustard);padding:2.5rem
       </div>
       <div>
         <div class="form-wrap">
-          <form id="contact-form" action="https://formspree.io/f/xreajnrd" method="POST">
+          <form id="contact-form" action="https://formspree.io/f/YOUR_FORMSPREE_ID" method="POST">
             <div class="form-row">
               <div class="fg">
                 <label for="f-name">Name</label>
@@ -638,16 +629,6 @@ if (cform) {
 /* Shows from shows.json — updated every 2 hours by GitHub Actions */
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const WHATNOT='https://www.whatnot.com/user/polakoff/shows';
-const TYPE_LABELS={big:'Big Show',popup:'Pop-Up',modern:'Modern Value'};
-function parseDayAbbr(dateStr){
-  if(!dateStr)return{name:'',num:''};
-  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const d=new Date(dateStr);
-  if(!isNaN(d.getTime()))return{name:days[d.getDay()],num:d.getDate()};
-  const m=dateStr.match(/^(\w+),?\s+\w+\s+(\d+)/);
-  if(m)return{name:m[1].slice(0,3),num:m[2]};
-  return{name:'',num:''};
-}
 fetch('./shows.json?v='+Date.now())
   .then(r=>r.json())
   .then(shows=>{
@@ -658,18 +639,15 @@ fetch('./shows.json?v='+Date.now())
     }
     list.innerHTML=shows.map(s=>{
       const t=(s.type||'popup').toLowerCase();
-      const label=TYPE_LABELS[t]||'Show';
       const link=s.url||WHATNOT;
-      const day=parseDayAbbr(s.date);
-      return`<a href="${esc(link)}" target="_blank" rel="noopener" class="show-card">
-        <div class="show-day type-${esc(t)}">
-          <span class="day-name">${esc(day.name)}</span>
-          <span class="day-num">${esc(String(day.num))}</span>
-        </div>
+      const title=s.title||'Vintage Baseball Cards \u2014 Live Show';
+      const dateLabel=s.date||'';
+      const timeLabel=s.time||'';
+      return`<a href="${esc(link)}" target="_blank" rel="noopener" class="show-card type-${esc(t)}">
         <div class="show-info">
-          <span class="show-badge type-${esc(t)}">${esc(label)}</span>
-          <span class="show-title">${esc(s.title||'Upcoming Show')}</span>
-          <span class="show-time">${esc(s.date||'')}${s.time?' · '+esc(s.time):''}</span>
+          <span class="show-date-label">${esc(dateLabel)}</span>
+          <span class="show-title">${esc(title)}</span>
+          ${timeLabel?`<span class="show-time">${esc(timeLabel)}</span>`:''}
         </div>
         <div class="show-arrow">&#8599;</div>
       </a>`;
