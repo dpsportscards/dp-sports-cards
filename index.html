@@ -134,7 +134,7 @@ nav{background:var(--char);display:flex;align-items:center;justify-content:space
 .hero{background:var(--cream);display:grid;grid-template-columns:1fr 380px;align-items:center;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,rgba(109,152,153,.22) 1.5px,transparent 1.5px);background-size:28px 28px;pointer-events:none}
 .hero::after{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--mustard)}
-.hero-text{padding:2rem 2.5rem 2rem 4.5rem;position:relative;z-index:1}
+.hero-text{padding:3rem 2.5rem 3rem 4.5rem;position:relative;z-index:1}
 .hero-text .eyebrow{color:var(--teal-dk)}
 .hero-h1{font-family:var(--serif);font-size:clamp(2.4rem,5vw,4rem);font-weight:900;line-height:1.0;color:var(--char);margin-bottom:1rem;letter-spacing:-.01em}
 .hero-h1 .accent{color:var(--teal-dk);font-style:italic}
@@ -332,14 +332,11 @@ footer{background:var(--char);border-top:4px solid var(--mustard);padding:2.5rem
 <section class="hero">
   <div class="hero-text fade-in">
     <span class="eyebrow">Orlando, FL &nbsp;·&nbsp; Est. 1999</span>
-    <div class="hero-brand">
-      <img src="dpsc.png" alt="DP Sports Cards Logo" class="hero-logo-inline">
-      <h1 class="hero-h1">
-        Vintage<br>
-        <em class="accent">Baseball</em><br>
-        <span class="mustard">Cards.</span>
-      </h1>
-    </div>
+    <h1 class="hero-h1">
+      Vintage<br>
+      <em class="accent">Baseball</em><br>
+      <span class="mustard">Cards.</span>
+    </h1>
     <p class="hero-tagline">
       Live auction shows every week on Whatnot with <strong>@polakoff</strong> — pre-war lots, golden age singles, and vintage finds from 25 years of collecting.
     </p>
@@ -381,7 +378,7 @@ footer{background:var(--char);border-top:4px solid var(--mustard);padding:2.5rem
         <rect x="2"   y="155" width="10" height="10" transform="rotate(45 7 160)"   fill="rgba(196,154,60,0.55)"/>
         <rect x="308" y="155" width="10" height="10" transform="rotate(45 313 160)" fill="rgba(196,154,60,0.55)"/>
       </svg>
-      <img src="dpsc.png" alt="" aria-hidden="true" class="hero-logo-img" style="opacity:0;pointer-events:none">
+      <img src="dpsc.png" alt="DP Sports Cards — @polakoff on Whatnot" class="hero-logo-img">
     </div>
   </div>
 </section>
@@ -402,7 +399,7 @@ footer{background:var(--char);border-top:4px solid var(--mustard);padding:2.5rem
     <div id="shows-list" class="shows-list fade-in">
       <div class="shows-empty">Loading schedule&hellip;</div>
     </div>
-    <p class="shows-updated">
+    <p class="shows-updated" id="shows-updated">
       Auto-updated every 2 hours from
       <a href="https://www.whatnot.com/user/polakoff/shows" target="_blank" rel="noopener">whatnot.com/user/polakoff</a>
     </p>
@@ -636,7 +633,24 @@ function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const WHATNOT='https://www.whatnot.com/user/polakoff/shows';
 fetch('./shows.json?v='+Date.now())
   .then(r=>r.json())
-  .then(shows=>{
+  .then(data=>{
+    // Support both old array format and new {lastUpdated, shows} format
+    const shows = Array.isArray(data) ? data : (data.shows || []);
+    const lastUpdated = data.lastUpdated || null;
+
+    // Display last-updated time
+    if (lastUpdated) {
+      try {
+        const d = new Date(lastUpdated);
+        const fmt = d.toLocaleString('en-US', {
+          month:'short', day:'numeric', hour:'numeric',
+          minute:'2-digit', timeZoneName:'short', timeZone:'America/New_York'
+        });
+        document.getElementById('shows-updated').innerHTML =
+          `Last updated ${fmt} &nbsp;·&nbsp; Auto-refreshes every 2 hours from <a href="${WHATNOT}" target="_blank" rel="noopener">whatnot.com/user/polakoff</a>`;
+      } catch(e) {}
+    }
+
     const list=document.getElementById('shows-list');
     if(!Array.isArray(shows)||shows.length===0){
       list.innerHTML=`<div class="shows-empty">No upcoming shows right now. <a href="${WHATNOT}" target="_blank" rel="noopener" style="color:var(--teal-dk);font-family:var(--sans);font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--teal)">Check @polakoff on Whatnot &#8599;</a></div>`;
