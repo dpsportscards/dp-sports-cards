@@ -1,5 +1,4 @@
 // DP Sports Cards — Whatnot Show Scraper
-// This version logs detailed debug info to help identify the correct title field.
 
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
@@ -19,215 +18,260 @@ function classifyType(title) {
 function formatDateTime(raw) {
   if (!raw) return { date: '', time: '' };
   try {
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return { date: raw, time: '' };
+    const d = new Date(typeof raw === 'number' ? raw : raw);
+    if (isNaN(d.getTime())) return { date: String(raw), time: '' };
     const date = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/New_York' });
     const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone: 'America/New_York' });
     return { date, time };
   } catch { return { date: String(raw), time: '' }; }
 }
 
-// Tries every plausible title field name on a show object
-function extractTitle(obj) {
-  if (!obj || typeof obj !== 'object') return '';
-  const TITLE_KEYS = [
-    'title','name','streamTitle','showTitle','displayTitle','headline',
-    'broadcastTitle','eventTitle','showName','listingTitle','label',
-    'subject','caption','header','productTitle','description'
-  ];
-  for (const k of TITLE_KEYS) {
-    const v = obj[k];
-    if (v && typeof v === 'string' && v.trim().length > 2 && v.trim().length < 200) {
-      return v.trim();
+// Recursively find any array of 2+ objects that share common keys
+// (much broader than before — catches any show-like data regardless of field names)
+function findAnyArrays(obj, depth = 0, path = '') {
+  if (depth > 8 || !obj) return [];
+  const found = [];
+  if (Array.isArray(obj) && obj.length >= 2 && typeof obj[0] === 'object' && obj[0] !== null) {
+    found.push({ path, arr: obj });
+  }
+  if (typeof obj === 'object' && !Array.isArray(obj)) {
+    for (const [k, v] of Object.entries(obj)) {
+      found.push(...findAnyArrays(v, depth + 1, path ? `${path}.${k}` : k));
     }
   }
-  // Check one level of nesting (stream, show, event, details sub-objects)
-  for (const sub of ['stream','show','event','details','listing','product']) {
+  if (Array.isArray(obj)) {
+    obj.forEach((item, i) => found.push(...findAnyArrays(item, depth + 1, `${path}[${i}]`)));
+  }
+  return found;
+}
+
+// Try every possible field name that might hold a timestamp or title
+const TIME_KEYS = ['startTime','scheduledAt','startsAt','start_time','scheduledStartTime',
+  'startedAt','liveAt','goLiveAt','scheduledStart','begins','beginsAt','date',
+  'eventDate','streamDate','showDate','airedAt','plannedAt','launchAt','endsAt',
+  'endTime','createdAt','updatedAt','publishedAt'];
+
+const TITLE_KEYS = ['title','name','streamTitle','showTitle','displayTitle','headline',
+  'broadcastTitle','eventTitle','showName','listingTitle','label','subject',
+  'caption','header','productTitle','description','about','summary'];
+
+function hasTimeField(obj) {
+  return TIME_KEYS.some(k => obj[k] !== undefined && obj[k] !== null);
+}
+
+function extractTitle(obj) {
+  for (const k of TITLE_KEYS) {
+    const v = obj[k];
+    if (v && typeof v === 'string' && v.trim().length > 2) return v.trim();
+  }
+  // Check one level of nesting
+  for (const sub of ['stream','show','event','details','listing','product','seller','data']) {
     if (obj[sub] && typeof obj[sub] === 'object') {
-      const nested = extractTitle(obj[sub]);
-      if (nested) return nested;
+      for (const k of TITLE_KEYS) {
+        const v = obj[sub][k];
+        if (v && typeof v === 'string' && v.trim().length > 2) return v.trim();
+      }
     }
   }
   return '';
 }
 
+function extractTime(obj) {
+  for (const k of TIME_KEYS) {
+    if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+  }
+  for (const sub of ['stream','show','event','details','listing']) {
+    if (obj[sub] && typeof obj[sub] === 'object') {
+      for (const k of TIME_KEYS) {
+        if (obj[sub][k] !== undefined) return obj[sub][k];
+      }
+    }
+  }
+  return null;
+}
+
 async function scrape() {
   console.log('=== DP Sports Cards Scraper ===');
-  console.log('TZ:', process.env.TZ || 'not set');
-  console.log('URL:', WHATNOT_URL);
+  console.log('TZ:', process.env.TZ, '| Chrome:', CHROME_PATH.slice(-30));
 
   const browser = await puppeteer.launch({
     executablePath: CHROME_PATH,
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    args: [
+      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+      '--window-size=1920,1080',
+      '--disable-blink-features=AutomationControlled'  // ← prevents bot detection
+    ]
   });
 
   let shows = [];
 
   try {
     const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36');
 
-    // Capture ALL JSON responses for analysis
+    // Spoof a real browser — prevents Whatnot from serving a stripped page
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      window.chrome = { runtime: {} };
+    });
+
+    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+    });
+
+    // Capture all JSON API responses
     const apiResponses = [];
     page.on('response', async response => {
-      const url = response.url();
       const ct = response.headers()['content-type'] || '';
       if (!ct.includes('application/json')) return;
       try {
         const json = await response.json();
-        apiResponses.push({ url, json });
+        apiResponses.push({ url: response.url(), json });
       } catch {}
     });
 
     console.log('\nLoading page...');
     await page.goto(WHATNOT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // Scroll down to trigger any lazy-loading
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    // Wait extra time and scroll to trigger any lazy loading
+    await new Promise(r => setTimeout(r, 5000));
+    await page.evaluate(() => {
+      window.scrollTo(0, 600);
+      window.scrollTo(0, 1200);
+      window.scrollTo(0, 1800);
+    });
     await new Promise(r => setTimeout(r, 3000));
 
-    // ── Strategy 1: Find show arrays in API responses ──────────────
-    console.log(`\nAPI responses captured: ${apiResponses.length}`);
+    const pageTitle = await page.title();
+    console.log('Page title:', pageTitle);
+    console.log('API responses captured:', apiResponses.length);
 
+    // ── Log all API responses to find show data ──────────────────
+    console.log('\n=== ALL API RESPONSES ===');
     for (const { url, json } of apiResponses) {
-      // Recursively search the JSON for an array that looks like shows
-      function findShowArrays(obj, depth = 0) {
-        if (depth > 6 || !obj) return [];
-        const found = [];
-        if (Array.isArray(obj)) {
-          // Does this array contain show-like objects?
-          const hasTimeField = obj.length > 0 && obj[0] && (
-            obj[0].startTime || obj[0].scheduledAt || obj[0].startsAt ||
-            obj[0].start_time || obj[0].scheduledStartTime || obj[0].startedAt
-          );
-          if (hasTimeField) found.push(obj);
-          for (const item of obj) found.push(...findShowArrays(item, depth + 1));
-        } else if (typeof obj === 'object') {
-          for (const val of Object.values(obj)) {
-            found.push(...findShowArrays(val, depth + 1));
-          }
-        }
-        return found;
+      const arrays = findAnyArrays(json);
+      const shortUrl = url.replace('https://www.whatnot.com', '').slice(0, 80);
+      if (arrays.length === 0) {
+        console.log(`\n[NO ARRAYS] ${shortUrl}`);
+        continue;
       }
-
-      const showArrays = findShowArrays(json);
-      if (showArrays.length === 0) continue;
-
-      // Pick the largest array that looks like shows
-      const best = showArrays.sort((a, b) => b.length - a.length)[0];
-      console.log(`\nFound ${best.length} shows via API: ${url.slice(0, 80)}`);
-
-      // *** DIAGNOSTIC: log the complete first show object ***
-      console.log('\n=== FIRST SHOW OBJECT (all fields) ===');
-      console.log(JSON.stringify(best[0], null, 2).slice(0, 4000));
-      console.log('=== TOP-LEVEL KEYS:', Object.keys(best[0]).join(', '));
-
-      shows = best.map(s => {
-        const startTime = s.startTime || s.scheduledAt || s.startsAt ||
-                          s.start_time || s.scheduledStartTime || s.startedAt || '';
-        const { date, time } = formatDateTime(startTime);
-        const title = extractTitle(s);
-        if (title) console.log('  Title found:', title);
-        const showUrl = s.url || s.shareUrl || s.link ||
-                        (s.id ? `https://www.whatnot.com/show/${s.id}` : WHATNOT_URL);
-        return { title, date, time, type: classifyType(title), url: showUrl, _raw_start: startTime };
-      });
-      break; // Use first/best match
-    }
-
-    // ── Strategy 2: DOM scraping ──────────────────────────────────
-    if (shows.length === 0) {
-      console.log('\nNo API data found — trying DOM scraping...');
-
-      // Log page title and first 2000 chars of body text for diagnostics
-      const pageTitle = await page.title();
-      console.log('Page title:', pageTitle);
-
-      const domData = await page.evaluate(() => {
-        // Log the first show card's complete HTML
-        const card = document.querySelector('[class*="show" i][class*="card" i], [class*="ShowCard"], article, [data-testid*="show"]');
-        if (card) console.log('First card HTML sample:', card.innerHTML.slice(0, 1000));
-
-        const results = [];
-        const links = [...document.querySelectorAll('a[href*="/show/"], a[href*="/stream/"]')];
-        console.log('Show links found:', links.length);
-
-        links.forEach(link => {
-          const card = link.closest('[class]') || link.parentElement;
-          // Get ALL text from the card
-          const fullText = card?.innerText || link.innerText || '';
-          // Get any aria-label or title attribute
-          const ariaLabel = link.getAttribute('aria-label') || '';
-          const titleAttr  = link.getAttribute('title') || '';
-          // Try heading elements specifically
-          const headingEl  = card?.querySelector('h1,h2,h3,h4,h5');
-          const headingText = headingEl?.innerText?.trim() || '';
-          // Time element
-          const timeEl     = card?.querySelector('time');
-          const timeStr    = timeEl?.getAttribute('datetime') || timeEl?.innerText?.trim() || '';
-
-          results.push({
-            url: link.href,
-            fullText: fullText.slice(0, 300),
-            ariaLabel, titleAttr, headingText, timeStr
-          });
-        });
-        return results;
-      });
-
-      console.log(`DOM: found ${domData.length} show links`);
-      domData.forEach((s, i) => {
-        console.log(`\nShow ${i+1}:`);
-        console.log('  URL:', s.url);
-        console.log('  Full text:', s.fullText.replace(/\n/g, ' | '));
-        console.log('  Aria-label:', s.ariaLabel);
-        console.log('  Title attr:', s.titleAttr);
-        console.log('  Heading:', s.headingText);
-        console.log('  Time:', s.timeStr);
-      });
-
-      // Build shows from DOM data
-      shows = domData.map(s => {
-        const { date, time } = formatDateTime(s.timeStr);
-        // Try to extract a real title (prefer headings, then aria-label, then first line of full text)
-        let title = s.headingText || s.ariaLabel || s.titleAttr || '';
-        // If no clean title, use first line of full text that isn't just a date/number
-        if (!title) {
-          const lines = s.fullText.split(/\n|\|/).map(l => l.trim()).filter(l =>
-            l.length > 4 && !/^\d/.test(l) && !/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(l)
-          );
-          title = lines[0] || '';
+      console.log(`\n[${arrays.length} arrays] ${shortUrl}`);
+      for (const { path: p, arr } of arrays.slice(0, 5)) {
+        const sample = arr[0];
+        const keys = Object.keys(sample).slice(0, 15).join(', ');
+        const hasTime = hasTimeField(sample);
+        const hasTitle = TITLE_KEYS.some(k => sample[k]);
+        console.log(`  .${p} → ${arr.length} items | keys: ${keys}`);
+        console.log(`    hasTimeField: ${hasTime} | hasTitleField: ${hasTitle}`);
+        if (hasTime || hasTitle) {
+          console.log('  *** POSSIBLE SHOW DATA — full first item:');
+          console.log(JSON.stringify(sample, null, 2).slice(0, 2000));
         }
-        return { title, date, time, type: classifyType(title), url: s.url };
-      });
+      }
     }
 
-    // ── Cleanup ───────────────────────────────────────────────────
-    const seen = new Set();
-    shows = shows
-      .filter(s => s.url) // keep anything with a URL
-      .filter(s => { if (seen.has(s.url)) return false; seen.add(s.url); return true; })
-      .slice(0, 20);
+    // ── Try to extract shows from API data ──────────────────────
+    console.log('\n=== LOOKING FOR SHOWS IN API DATA ===');
+    for (const { url, json } of apiResponses) {
+      const arrays = findAnyArrays(json);
+      for (const { path: p, arr } of arrays) {
+        // Must have at least some items with time fields
+        const showLike = arr.filter(item => item && typeof item === 'object' && hasTimeField(item));
+        if (showLike.length >= 1) {
+          console.log(`Found ${showLike.length} show-like items at .${p} in ${url.slice(-60)}`);
+          shows = showLike.map(s => {
+            const rawTime = extractTime(s);
+            const { date, time } = formatDateTime(rawTime);
+            const title = extractTitle(s);
+            const id = s.id || s.showId || s.streamId || s.eventId || '';
+            const showUrl = s.url || s.shareUrl || s.link ||
+                            (id ? `https://www.whatnot.com/show/${id}` : WHATNOT_URL);
+            console.log(`  → "${title || '(no title)'}" | ${date} ${time}`);
+            return { title, date, time, type: classifyType(title), url: showUrl };
+          });
+          if (shows.length > 0) break;
+        }
+      }
+      if (shows.length > 0) break;
+    }
+
+    // ── DOM fallback: log ALL page links ─────────────────────────
+    console.log('\n=== DOM LINKS ON PAGE ===');
+    const allLinks = await page.evaluate(() =>
+      [...document.querySelectorAll('a[href]')]
+        .map(a => a.href)
+        .filter((h, i, a) => a.indexOf(h) === i && h.startsWith('http'))
+    );
+    console.log(`Total links: ${allLinks.length}`);
+    // Print all unique whatnot.com links
+    allLinks.filter(l => l.includes('whatnot.com')).forEach(l => console.log(' ', l));
+
+    // ── DOM fallback: grab any show links ────────────────────────
+    if (shows.length === 0) {
+      console.log('\n=== TRYING DOM EXTRACTION ===');
+      const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 3000));
+      console.log('Page body text:\n', bodyText);
+
+      const domShows = await page.evaluate(() => {
+        // Try broad link patterns
+        const patterns = ['a[href*="/show"]','a[href*="/stream"]','a[href*="/live"]',
+                          'a[href*="/auction"]','a[href*="/event"]','a[href*="/listing"]'];
+        const links = [];
+        for (const pat of patterns) {
+          document.querySelectorAll(pat).forEach(a => {
+            if (!links.some(l => l.url === a.href)) {
+              const card = a.closest('[class]') || a.parentElement;
+              links.push({
+                url: a.href,
+                text: (card?.innerText || a.innerText || '').slice(0, 300),
+                ariaLabel: a.getAttribute('aria-label') || ''
+              });
+            }
+          });
+        }
+        return links;
+      });
+
+      console.log(`DOM show links found: ${domShows.length}`);
+      domShows.forEach(s => {
+        console.log('  URL:', s.url);
+        console.log('  Text:', s.text.replace(/\n/g, ' | ').slice(0, 150));
+        console.log('  Aria:', s.ariaLabel);
+      });
+
+      shows = domShows.map(s => ({
+        title: s.ariaLabel || s.text.split('\n')[0] || '',
+        date: '', time: '',
+        type: 'popup',
+        url: s.url
+      })).filter(s => s.url);
+    }
 
   } finally {
     await browser.close();
   }
 
+  // Deduplicate
+  const seen = new Set();
+  shows = shows.filter(s => s.url && !seen.has(s.url) && seen.add(s.url)).slice(0, 20);
+
   const outPath = path.join(__dirname, '..', 'shows.json');
   fs.writeFileSync(outPath, JSON.stringify(shows, null, 2));
 
-  console.log(`\n=== RESULT: saved ${shows.length} shows ===`);
-  shows.forEach(s => console.log(`  [${s.type}] "${s.title}" | ${s.date} ${s.time} | ${s.url}`));
-
-  if (shows.length === 0) {
-    console.log('\nNO SHOWS FOUND. Please share this full log so the selectors can be fixed.');
-  }
+  console.log(`\n=== SAVED ${shows.length} shows ===`);
+  shows.forEach(s => console.log(`  "${s.title}" | ${s.date} ${s.time} | ${s.url}`));
 }
 
 scrape().catch(err => {
-  console.error('Scraper error:', err.message);
-  console.error(err.stack);
+  console.error('Fatal error:', err.message);
   const outPath = path.join(__dirname, '..', 'shows.json');
   if (!fs.existsSync(outPath)) fs.writeFileSync(outPath, '[]');
   process.exit(1);
