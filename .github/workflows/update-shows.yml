@@ -2,8 +2,8 @@ name: Update Upcoming Shows
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # every 2 hours, automatically
-  workflow_dispatch:          # also lets you click "Run workflow" manually anytime
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,7 +11,7 @@ permissions:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -22,14 +22,17 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+
       - name: Install dependencies
         run: npm install
 
-      - name: Install Chrome for Puppeteer
-        run: npx puppeteer browsers install chrome
-
       - name: Run show scraper
         run: node scraper/scrape.js
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
 
       - name: Commit updated shows.json if changed
         run: |
