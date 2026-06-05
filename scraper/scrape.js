@@ -1,6 +1,5 @@
 // DP Sports Cards — Whatnot Show Scraper
-// Parses the rendered page body text, which contains all show data.
-// The 19 API calls are analytics/tracking only — show data is in the DOM text.
+// Body text parsing (proven to work) + title-based URL matching (no more index offsets).
 
 const puppeteer = require('puppeteer-core');
 const fs   = require('fs');
@@ -20,57 +19,51 @@ function classifyType(title, date) {
   return 'popup';
 }
 
-// Parse the body text. Confirmed format from live log:
+// Parse body text into shows (titles, dates, times).
+// Confirmed format from live Whatnot page:
 //   polakoff
-//   Mon, Jun 15, 5:00 PM   ← or just "Mon 5:00 PM" for nearest show
-//   21                     ← some counter (ignore)
-//   Vintage baseball beater beauties! ...  ← TITLE
-//   Singles, $1 Starts, Vintage            ← tags (ignore)
-//   polakoff
-//   ...
-function parseShows(bodyText, showLinks) {
+//   Mon, Jun 15, 5:00 PM
+//   21
+//   Show Title Here!
+//   Singles, Raw Cards, Vintage   ← tag line (ignored)
+//   polakoff ...
+function parseBodyText(bodyText) {
   const lines = bodyText.split('\n').map(l => l.trim()).filter(Boolean);
 
   const startIdx = lines.findIndex(l => /Upcoming Shows/i.test(l));
-  if (startIdx === -1) { console.log('Could not find "Upcoming Shows" in body text'); return []; }
+  if (startIdx === -1) { console.log('⚠ "Upcoming Shows" not found in body text'); return []; }
 
   const endIdx = lines.findIndex((l, i) => i > startIdx && /^(Whatnot|© \d{4})/i.test(l));
   const relevant = lines.slice(startIdx + 1, endIdx === -1 ? undefined : endIdx);
-  console.log(`Parsing ${relevant.length} lines between "Upcoming Shows" and page footer`);
+  console.log(`Parsing ${relevant.length} lines in shows section`);
 
   const shows = [];
   let i = 0;
-  let showIndex = 0;
 
   while (i < relevant.length) {
-    // Each show block starts with the seller handle
     if (relevant[i] !== 'polakoff') { i++; continue; }
     i++;
 
-    // Date/time line: "Mon 5:00 PM" or "Mon, Jun 15, 5:00 PM"
+    // Date/time line
     const dtLine = relevant[i] || '';
     if (!/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(dtLine)) { i++; continue; }
     i++;
 
-    // Skip the counter number (30, 21, 19, 11, 7…)
+    // Skip counter number (30, 21, 19…)
     if (/^\d+$/.test(relevant[i] || '')) i++;
 
-    // Title is the next non-empty line
-    const title = relevant[i] || '';
+    // Title
+    const title = (relevant[i] || '').trim();
     if (!title) { i++; continue; }
     i++;
 
-    // Skip tag lines (comma-separated category strings)
+    // Skip tag lines (comma-separated strings)
     while (i < relevant.length && relevant[i] !== 'polakoff' && relevant[i].includes(',')) i++;
 
-    // ── Parse date & time ──────────────────────────────────────
+    // Parse date and time
     let date = '', time = '';
-
-    // Full: "Mon, Jun 15, 5:00 PM"
-    const full = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+([A-Za-z]+\s+\d+),?\s+(\d+:\d+\s*[AP]M)/i);
-    // Short: "Mon 5:00 PM"
+    const full  = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+([A-Za-z]+\s+\d+),?\s+(\d+:\d+\s*[AP]M)/i);
     const short = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d+:\d+\s*[AP]M)/i);
-
     if (full) {
       date = `${DAY_MAP[full[1].toLowerCase()]}, ${full[2]}`;
       time = `${full[3]} ET`;
@@ -81,15 +74,37 @@ function parseShows(bodyText, showLinks) {
       date = dtLine;
     }
 
-    // URL: use matched show link if available, otherwise shows page
-    const url = showLinks[showIndex] || WHATNOT_URL;
-    showIndex++;
-
-    shows.push({ title, date, time, type: classifyType(title, date), url });
-    console.log(`  [${shows.length}] "${title}" | ${date} | ${time} | ${url}`);
+    shows.push({ title, date, time, type: classifyType(title, date), url: WHATNOT_URL });
   }
 
   return shows;
+}
+
+// Find the best matching URL for a show title from the page's link map.
+// Matches by checking if the link's text content contains the show title.
+// This avoids positional index errors entirely.
+function findUrlForTitle(title, linkMap) {
+  if (!title) return WHATNOT_URL;
+  const t = title.toLowerCase();
+
+  // Exact title match first
+  let match = linkMap.find(l =>
+    l.text.toLowerCase().includes(t) &&
+    l.href !== WHATNOT_URL &&
+    !l.href.match(/\/user\/[^/]+\/?$/)   // not just a profile page
+  );
+
+  // Fuzzy: first 25 characters of title (handles truncation)
+  if (!match && title.length > 15) {
+    const slug = t.slice(0, 25);
+    match = linkMap.find(l =>
+      l.text.toLowerCase().includes(slug) &&
+      l.href !== WHATNOT_URL &&
+      !l.href.match(/\/user\/[^/]+\/?$/)
+    );
+  }
+
+  return match ? match.href : WHATNOT_URL;
 }
 
 async function scrape() {
@@ -113,58 +128,48 @@ async function scrape() {
     await page.goto(WHATNOT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
     await new Promise(r => setTimeout(r, 4000));
 
-    const pageTitle = await page.title();
-    console.log('Page title:', pageTitle);
+    console.log('Page title:', await page.title());
 
-    // Get all unique Whatnot links — look for show-specific URLs
-    const showLinks = await page.evaluate((baseUrl) => {
-      const allLinks = [...document.querySelectorAll('a[href]')]
-        .map(a => a.href)
-        .filter((h, i, arr) => arr.indexOf(h) === i); // unique
-
-      console.log('All links:', allLinks.join('\n')); // for debugging
-
-      // Filter to links that look like individual show pages (not nav/profile links)
-      const navPaths = ['/user/', '/browse', '/login', '/signup', '/blog', '/careers',
-                        '/about', '/faq', '/help', '/terms', '/privacy', '/affiliates',
-                        '/order', '/shipping', '/returns', '/payment', '/contact'];
-      return allLinks.filter(h => {
-        if (!h.includes('whatnot.com')) return false;
-        if (h === baseUrl) return false;
-        try {
-          const p = new URL(h).pathname;
-          return !navPaths.some(n => p.startsWith(n));
-        } catch { return false; }
-      });
-    }, WHATNOT_URL);
-
-    console.log(`Show-like links found: ${showLinks.length}`);
-    showLinks.forEach(l => console.log(' ', l));
-
-    // Get the full rendered body text (this is where the show data lives)
+    // Step 1: Parse body text for show titles / dates / times
     const bodyText = await page.evaluate(() => document.body?.innerText || '');
-    console.log(`\nBody text length: ${bodyText.length}`);
+    shows = parseBodyText(bodyText);
+    console.log(`Body text parsed: ${shows.length} shows found`);
 
-    shows = parseShows(bodyText, showLinks);
+    // Step 2: Build a map of every link on the page with its visible text
+    const linkMap = await page.evaluate(() =>
+      [...document.querySelectorAll('a[href]')].map(a => ({
+        href: a.href,
+        text: (a.innerText || a.textContent || '').trim()
+      })).filter(l => l.href.includes('whatnot.com') && l.text.length > 0)
+    );
+
+    console.log(`\nAll Whatnot links found on page (${linkMap.length}):`);
+    linkMap.forEach(l => console.log(`  [${l.href.replace('https://www.whatnot.com','')}]  "${l.text.slice(0,60).replace(/\n/g,' ')}"`));
+
+    // Step 3: For each show, find its URL by matching the title against link text
+    shows = shows.map(show => {
+      const url = findUrlForTitle(show.title, linkMap);
+      console.log(`  "${show.title}" → ${url === WHATNOT_URL ? '(fallback)' : url.replace('https://www.whatnot.com','')}`);
+      return { ...show, url };
+    });
 
   } finally {
     await browser.close();
   }
 
-  // Deduplicate by title+date
+  // Deduplicate by title + date
   const seen = new Set();
   shows = shows.filter(s => {
-    const key = `${s.title}|${s.date}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    const k = `${s.title}|${s.date}`;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
   }).slice(0, 20);
 
   const outPath = path.join(__dirname, '..', 'shows.json');
   fs.writeFileSync(outPath, JSON.stringify(shows, null, 2));
 
   console.log(`\n=== SAVED ${shows.length} shows ===`);
-  if (shows.length === 0) console.log('WARNING: No shows saved. Share this log for diagnosis.');
+  shows.forEach(s => console.log(`  [${s.type}] "${s.title}" | ${s.date} | ${s.time} | ${s.url.replace('https://www.whatnot.com','')}`));
 }
 
 scrape().catch(err => {
