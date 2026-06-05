@@ -11,25 +11,30 @@ permissions:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+
+      - run: npm install
 
       - name: Run show scraper
         run: node scraper/scrape.js
         env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
           TZ: America/New_York
 
-      - name: Commit updated shows.json if changed
+      - name: Commit if changed
         run: |
-          git config --global user.name  "Shows Bot"
+          git config --global user.name "Shows Bot"
           git config --global user.email "bot@dpsportscards.local"
           git add shows.json
           git diff --staged --quiet || (git commit -m "Update upcoming shows [skip ci]" && git push)
