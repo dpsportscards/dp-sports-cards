@@ -33,6 +33,7 @@ jobs:
         run: node scraper/scrape.js
         env:
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          TZ: America/New_York
 
       - name: Commit updated shows.json if changed
         run: |
