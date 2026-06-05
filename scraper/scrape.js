@@ -1,12 +1,18 @@
 // DP Sports Cards — Whatnot Show Scraper
-// Runs every 2 hours via GitHub Actions (free).
-// Saves upcoming shows to shows.json so the website displays them.
+// Uses the Chrome browser installed by GitHub Actions (reliable, no download issues).
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
 
 const WHATNOT_URL = 'https://www.whatnot.com/user/polakoff/shows';
+
+// Chrome path is passed in from the workflow as an environment variable
+const CHROME_PATH = process.env.CHROME_PATH;
+if (!CHROME_PATH) {
+  console.error('ERROR: CHROME_PATH environment variable not set.');
+  process.exit(1);
+}
 
 function classifyType(title) {
   const t = (title || '').toLowerCase();
@@ -30,9 +36,11 @@ function formatDateTime(raw) {
 
 async function scrape() {
   console.log('Starting Whatnot scraper...');
+  console.log('Using Chrome at:', CHROME_PATH);
 
   const browser = await puppeteer.launch({
-    headless: 'new',
+    executablePath: CHROME_PATH,
+    headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
   });
 
@@ -54,11 +62,11 @@ async function scrape() {
       }
     });
 
-    console.log('Loading page...');
+    console.log('Loading Whatnot page...');
     await page.goto(WHATNOT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-    await new Promise(r => setTimeout(r, 4000)); // let JS finish
+    await new Promise(r => setTimeout(r, 4000));
 
-    // Try to find shows in intercepted API responses
+    // Try API responses first (most reliable)
     for (const { url, json } of apiResponses) {
       const candidates = [
         json?.data?.shows, json?.shows,
@@ -82,7 +90,7 @@ async function scrape() {
       }
     }
 
-    // Strategy 2: __NEXT_DATA__ (Next.js server-side data blob)
+    // Strategy 2: __NEXT_DATA__ blob
     if (shows.length === 0) {
       console.log('Trying __NEXT_DATA__...');
       const nextData = await page.evaluate(() => {
@@ -110,7 +118,7 @@ async function scrape() {
       }
     }
 
-    // Strategy 3: DOM scraping — find links to individual show pages
+    // Strategy 3: DOM scraping
     if (shows.length === 0) {
       console.log('Trying DOM scraping...');
       const domShows = await page.evaluate((fallback) => {
@@ -152,7 +160,7 @@ async function scrape() {
     console.log(`Saved ${shows.length} upcoming shows:`);
     shows.forEach(s => console.log(`  • ${s.date} — ${s.title}`));
   } else {
-    console.log('No upcoming shows found right now (normal if none are scheduled).');
+    console.log('No upcoming shows found (normal if none are currently scheduled on Whatnot).');
   }
 }
 
