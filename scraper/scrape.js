@@ -1,43 +1,16 @@
 // DP Sports Cards — Whatnot Show Scraper
-// Pure HTTP — no browser, no Chrome, nothing to be blocked.
-// Fetches the page HTML directly and extracts show data from the
-// server-rendered __NEXT_DATA__ blob that Whatnot embeds for SEO.
+// Uses the browser-based approach that previously found 5 shows successfully.
+// Key fix: extended candidates list to handle GraphQL edges/node pattern,
+// which is likely where show titles are stored.
 
-const https = require('https');
+const puppeteer = require('puppeteer-core');
 const fs   = require('fs');
 const path = require('path');
 
-const WHATNOT_URL = 'https://www.whatnot.com/user/polakoff/shows';
+const WHATNOT_URL  = 'https://www.whatnot.com/user/polakoff/shows';
+const CHROME_PATH  = process.env.CHROME_PATH;
+if (!CHROME_PATH) { console.error('CHROME_PATH not set'); process.exit(1); }
 
-// ── HTTP helper ────────────────────────────────────────────
-function get(url, depth = 0) {
-  return new Promise((resolve, reject) => {
-    if (depth > 6) return reject(new Error('Too many redirects'));
-    const req = https.get(url, {
-      headers: {
-        'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control':   'no-cache',
-      }
-    }, res => {
-      if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location) {
-        const next = res.headers.location.startsWith('http')
-          ? res.headers.location
-          : new URL(res.headers.location, url).toString();
-        return get(next, depth + 1).then(resolve).catch(reject);
-      }
-      let body = '';
-      res.setEncoding('utf8');
-      res.on('data', c => body += c);
-      res.on('end', () => resolve({ status: res.statusCode, body }));
-    });
-    req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Timeout')); });
-  });
-}
-
-// ── Helpers ────────────────────────────────────────────────
 function formatDateTime(raw) {
   if (!raw) return { date: '', time: '' };
   try {
@@ -57,162 +30,154 @@ function classifyType(title) {
   return 'popup';
 }
 
-const TIME_KEYS  = ['startTime','scheduledAt','startsAt','start_time','scheduledStartTime',
-                    'liveAt','goLiveAt','scheduledStart','begins','beginsAt','eventDate','streamDate'];
-const TITLE_KEYS = ['title','name','streamTitle','showTitle','displayTitle','headline',
-                    'broadcastTitle','eventTitle','showName','label','subject','caption'];
-
-function extractTime(obj) {
-  for (const k of TIME_KEYS)  { if (obj[k] != null) return obj[k]; }
-  for (const sub of ['stream','show','event','details']) {
-    if (obj[sub] && typeof obj[sub] === 'object') {
-      for (const k of TIME_KEYS) { if (obj[sub][k] != null) return obj[sub][k]; }
-    }
-  }
-  return null;
-}
-
-function extractTitle(obj) {
-  for (const k of TITLE_KEYS) { if (obj[k] && typeof obj[k] === 'string' && obj[k].trim().length > 2) return obj[k].trim(); }
-  for (const sub of ['stream','show','event','details','listing']) {
-    if (obj[sub] && typeof obj[sub] === 'object') {
-      for (const k of TITLE_KEYS) { if (obj[sub][k] && typeof obj[sub][k] === 'string') return obj[sub][k].trim(); }
-    }
+// Pull a title from a show object — tries every known field name
+function getTitle(s) {
+  const fields = ['title','name','streamTitle','showTitle','displayTitle',
+                  'headline','broadcastTitle','eventTitle','showName','label','subject'];
+  for (const f of fields) {
+    if (s[f] && typeof s[f] === 'string' && s[f].trim().length > 2) return s[f].trim();
   }
   return '';
 }
 
-// Walk any JS/JSON structure looking for arrays of show-like objects
-function findShowArrays(obj, depth = 0) {
-  if (depth > 8 || obj == null) return [];
-  const results = [];
-  if (Array.isArray(obj)) {
-    if (obj.length >= 1 && typeof obj[0] === 'object' && obj[0] !== null && extractTime(obj[0])) {
-      results.push(obj);
-    }
-    for (const item of obj) results.push(...findShowArrays(item, depth + 1));
-  } else if (typeof obj === 'object') {
-    for (const v of Object.values(obj)) results.push(...findShowArrays(v, depth + 1));
-  }
-  return results;
+// Pull a start time from a show object
+function getStartTime(s) {
+  const fields = ['startTime','scheduledAt','startsAt','start_time',
+                  'scheduledStartTime','liveAt','goLiveAt','scheduledStart'];
+  for (const f of fields) { if (s[f] != null) return s[f]; }
+  return '';
 }
 
-// ── Main ───────────────────────────────────────────────────
+// Helper: unwrap GraphQL edges → nodes
+function edges(obj) {
+  return Array.isArray(obj?.edges)
+    ? obj.edges.map(e => e?.node).filter(Boolean)
+    : null;
+}
+
+// Given a parsed JSON API response, return the best array of show objects found
+function findShows(json) {
+  const d = json?.data;
+  const candidates = [
+    // — direct arrays (non-GraphQL) ——————————————————
+    d?.shows,
+    d?.streams,
+    d?.scheduledShows,
+    d?.upcomingShows,
+    d?.listings,
+    d?.seller?.shows,
+    d?.seller?.scheduledShows,
+    d?.seller?.upcomingShows,
+    d?.user?.shows,
+    d?.user?.scheduledShows,
+    d?.user?.upcomingShows,
+    json?.shows,
+    json?.streams,
+    json?.scheduledShows,
+    json?.upcomingShows,
+    // — GraphQL edges/node pattern ————————————————————
+    edges(d?.shows),
+    edges(d?.streams),
+    edges(d?.scheduledShows),
+    edges(d?.upcomingShows),
+    edges(d?.listings),
+    edges(d?.seller?.shows),
+    edges(d?.seller?.scheduledShows),
+    edges(d?.seller?.upcomingShows),
+    edges(d?.user?.shows),
+    edges(d?.user?.scheduledShows),
+    edges(d?.user?.upcomingShows),
+  ];
+  return candidates.find(v => Array.isArray(v) && v.length > 0) || null;
+}
+
 async function scrape() {
-  console.log('=== DP Sports Cards Scraper (pure HTTP) ===');
-  console.log('Fetching', WHATNOT_URL);
+  console.log('=== DP Sports Cards — Show Scraper ===');
+  console.log('TZ:', process.env.TZ);
 
-  const { status, body } = await get(WHATNOT_URL);
-  console.log('HTTP status:', status, '| HTML bytes:', body.length);
+  const browser = await puppeteer.launch({
+    executablePath: CHROME_PATH,
+    headless: true,
+    args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--window-size=1280,800']
+  });
 
-  if (status !== 200) throw new Error(`Unexpected HTTP status: ${status}`);
+  let shows = [];
 
-  // ── Attempt 1: __NEXT_DATA__ ──────────────────────────────
-  const nextMatch = body.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-  if (nextMatch) {
-    console.log('\n✓ Found __NEXT_DATA__ (' + nextMatch[1].length + ' chars)');
-    const nextData = JSON.parse(nextMatch[1]);
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-    const arrays = findShowArrays(nextData);
-    console.log('Show-like arrays found:', arrays.length);
+    // Capture every JSON API response Whatnot's React app makes
+    const apiResponses = [];
+    page.on('response', async response => {
+      const ct = response.headers()['content-type'] || '';
+      if (!ct.includes('application/json')) return;
+      try { apiResponses.push({ url: response.url(), json: await response.json() }); } catch {}
+    });
 
-    if (arrays.length > 0) {
-      const best = arrays.sort((a,b) => b.length - a.length)[0];
-      console.log('Best array has', best.length, 'items');
-      console.log('First item keys:', Object.keys(best[0]).join(', '));
-      console.log('First item (sample):', JSON.stringify(best[0]).slice(0, 800));
+    console.log('Loading page…');
+    await page.goto(WHATNOT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise(r => setTimeout(r, 4000));  // let JS settle
 
-      const shows = best.map(s => {
-        const { date, time } = formatDateTime(extractTime(s));
-        const title = extractTitle(s);
+    const pageTitle = await page.title();
+    console.log('Page title:', pageTitle);
+    console.log('API responses captured:', apiResponses.length);
+
+    // ── Try every captured API response ──────────────────────────
+    for (const { url, json } of apiResponses) {
+      const found = findShows(json);
+      if (!found) continue;
+
+      console.log(`\n✓ Found ${found.length} shows in: ${url.slice(0,100)}`);
+
+      // Log the complete first show so we can see ALL field names & values
+      console.log('\n=== FIRST SHOW OBJECT ===');
+      console.log(JSON.stringify(found[0], null, 2).slice(0, 3000));
+      console.log('Keys:', Object.keys(found[0]).join(', '));
+
+      shows = found.map(s => {
+        const startTime = getStartTime(s);
+        const { date, time } = formatDateTime(startTime);
+        const title = getTitle(s);
         const id = s.id || s.showId || s.streamId || '';
-        const url = s.url || s.shareUrl || (id ? `https://www.whatnot.com/show/${id}` : WHATNOT_URL);
-        return { title, date, time, type: classifyType(title), url };
-      }).filter(s => s.date || s.url !== WHATNOT_URL);
+        const showUrl = s.url || s.shareUrl || s.link ||
+                        (id ? `https://www.whatnot.com/show/${id}` : WHATNOT_URL);
+        console.log(`  → "${title || '(no title)'}" | ${date} ${time}`);
+        return { title, date, time, type: classifyType(title), url: showUrl };
+      }).filter(s => s.date || s.time || s.url !== WHATNOT_URL);
 
-      return shows;
+      if (shows.length > 0) break;
     }
 
-    // Log the full structure so we can debug
-    console.log('\n__NEXT_DATA__ top-level keys:', Object.keys(nextData).join(', '));
-    if (nextData.props) console.log('props keys:', Object.keys(nextData.props).join(', '));
-    if (nextData.props?.pageProps) console.log('pageProps keys:', Object.keys(nextData.props.pageProps).join(', '));
-    console.log('\nFull __NEXT_DATA__ (first 4000 chars):');
-    console.log(JSON.stringify(nextData, null, 2).slice(0, 4000));
-  } else {
-    console.log('\n✗ No __NEXT_DATA__ found');
-  }
+    // ── If API came up empty, log all response URLs for diagnosis ─
+    if (shows.length === 0) {
+      console.log('\nNo shows found in API responses. All captured URLs:');
+      apiResponses.forEach(({ url }) => console.log(' ', url.slice(0, 120)));
 
-  // ── Attempt 2: JSON-LD structured data ───────────────────
-  const ldBlocks = [...body.matchAll(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)];
-  console.log('\nJSON-LD blocks found:', ldBlocks.length);
-  for (const [, raw] of ldBlocks) {
-    try {
-      const ld = JSON.parse(raw);
-      console.log('LD type:', ld['@type'], '| keys:', Object.keys(ld).join(', '));
-      const arrays = findShowArrays(ld);
-      if (arrays.length > 0) {
-        console.log('Found show data in JSON-LD!');
-        const best = arrays[0];
-        return best.map(s => {
-          const { date, time } = formatDateTime(extractTime(s));
-          return { title: extractTitle(s), date, time, type: classifyType(extractTitle(s)), url: s.url || WHATNOT_URL };
-        });
-      }
-    } catch {}
-  }
-
-  // ── Attempt 3: grep the raw HTML for show-like JSON ──────
-  console.log('\nSearching raw HTML for show data...');
-  // Look for any JSON arrays in script tags that contain time-field patterns
-  const timePattern = /"(?:startTime|scheduledAt|startsAt|liveAt)":\s*"[^"]+"/;
-  const scriptBlocks = [...body.matchAll(/<script[^>]*>([\s\S]{50,}?)<\/script>/g)];
-  for (const [, scriptContent] of scriptBlocks) {
-    if (timePattern.test(scriptContent)) {
-      console.log('Found time-field pattern in script tag!');
-      // Try to extract all JSON objects from this script
-      const jsonArrayMatch = scriptContent.match(/\[(\s*\{[\s\S]+?\}[\s,]*)+\]/g);
-      if (jsonArrayMatch) {
-        for (const raw of jsonArrayMatch) {
-          try {
-            const arr = JSON.parse(raw);
-            if (Array.isArray(arr) && arr.length > 0 && extractTime(arr[0])) {
-              console.log('Extracted show array from script tag, length:', arr.length);
-              return arr.map(s => {
-                const { date, time } = formatDateTime(extractTime(s));
-                return { title: extractTitle(s), date, time, type: classifyType(extractTitle(s)), url: s.url || WHATNOT_URL };
-              });
-            }
-          } catch {}
-        }
-      }
+      // Also dump the page body text to see what rendered
+      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 2000) || '');
+      console.log('\nPage body text:\n', bodyText);
     }
+
+  } finally {
+    await browser.close();
   }
 
-  // ── Fallback: log enough HTML to diagnose ─────────────────
-  console.log('\n=== DIAGNOSTIC HTML DUMP (first 6000 chars) ===');
-  console.log(body.slice(0, 6000));
+  // Deduplicate
+  const seen = new Set();
+  shows = shows.filter(s => s.url && !seen.has(s.url) && seen.add(s.url)).slice(0, 20);
 
-  return [];
+  const outPath = path.join(__dirname, '..', 'shows.json');
+  fs.writeFileSync(outPath, JSON.stringify(shows, null, 2));
+
+  console.log(`\n=== SAVED ${shows.length} shows ===`);
+  shows.forEach(s => console.log(`  [${s.type}] "${s.title}" | ${s.date} | ${s.time}`));
 }
 
-// ── Run ────────────────────────────────────────────────────
-scrape().then(shows => {
-  const seen = new Set();
-  const unique = shows.filter(s => s.url && !seen.has(s.url) && seen.add(s.url)).slice(0, 20);
-
-  const outPath = path.join(__dirname, '..', 'shows.json');
-  fs.writeFileSync(outPath, JSON.stringify(unique, null, 2));
-
-  console.log(`\n=== SAVED ${unique.length} shows ===`);
-  unique.forEach(s => console.log(`  "${s.title}" | ${s.date} | ${s.time} | ${s.url}`));
-
-  if (unique.length === 0) {
-    console.log('No shows found — please share this log for diagnosis.');
-  }
-}).catch(err => {
-  console.error('Fatal error:', err.message);
-  const outPath = path.join(__dirname, '..', 'shows.json');
-  if (!fs.existsSync(outPath)) fs.writeFileSync(outPath, '[]');
+scrape().catch(err => {
+  console.error('Fatal:', err.message);
+  const p = path.join(__dirname, '..', 'shows.json');
+  if (!fs.existsSync(p)) fs.writeFileSync(p, '[]');
   process.exit(1);
 });
