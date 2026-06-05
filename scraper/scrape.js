@@ -184,7 +184,8 @@ async function scrape() {
   }).slice(0, 20);
 
   const outPath = path.join(__dirname, '..', 'shows.json');
-  fs.writeFileSync(outPath, JSON.stringify(shows, null, 2));
+  const output = { lastUpdated: new Date().toISOString(), shows };
+  fs.writeFileSync(outPath, JSON.stringify(output, null, 2));
 
   console.log(`\n=== SAVED ${shows.length} shows ===`);
   shows.forEach(s => console.log(`  [${s.type}] "${s.title}" | ${s.date} | ${s.time} | ${s.url.replace('https://www.whatnot.com','')}`));
