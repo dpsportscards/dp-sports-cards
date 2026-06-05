@@ -44,9 +44,9 @@ function parseBodyText(bodyText) {
     if (relevant[i] !== 'polakoff') { i++; continue; }
     i++;
 
-    // Date/time line
+    // Date/time line — handles day abbreviations AND "Today"/"Tomorrow"
     const dtLine = relevant[i] || '';
-    if (!/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(dtLine)) { i++; continue; }
+    if (!/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun|Today|Tomorrow)/i.test(dtLine)) { i++; continue; }
     i++;
 
     // Skip counter number (30, 21, 19…)
@@ -60,16 +60,34 @@ function parseBodyText(bodyText) {
     // Skip tag lines (comma-separated strings)
     while (i < relevant.length && relevant[i] !== 'polakoff' && relevant[i].includes(',')) i++;
 
-    // Parse date and time
+    // Parse date and time — handles all Whatnot formats:
+    // "Mon, Jun 15, 5:00 PM"  "Mon 5:00 PM"  "Today 3:45 PM"  "Tomorrow 5:00 PM"
     let date = '', time = '';
-    const full  = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+([A-Za-z]+\s+\d+),?\s+(\d+:\d+\s*[AP]M)/i);
-    const short = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d+:\d+\s*[AP]M)/i);
+    const full     = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+([A-Za-z]+\s+\d+),?\s+(\d+:\d+\s*[AP]M)/i);
+    const short    = dtLine.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d+:\d+\s*[AP]M)/i);
+    const todayFmt = dtLine.match(/^Today\s+(\d+:\d+\s*[AP]M)/i);
+    const tmrwFmt  = dtLine.match(/^Tomorrow\s+(\d+:\d+\s*[AP]M)/i);
+
     if (full) {
       date = `${DAY_MAP[full[1].toLowerCase()]}, ${full[2]}`;
       time = `${full[3]} ET`;
     } else if (short) {
       date = DAY_MAP[short[1].toLowerCase()] || short[1];
       time = `${short[2]} ET`;
+    } else if (todayFmt) {
+      // Resolve "Today" to the actual calendar date in Eastern time
+      const et = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const DAYS  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      date = `${DAYS[et.getDay()]}, ${MONTHS[et.getMonth()]} ${et.getDate()}`;
+      time = `${todayFmt[1]} ET`;
+    } else if (tmrwFmt) {
+      const et = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      et.setDate(et.getDate() + 1);
+      const DAYS  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      date = `${DAYS[et.getDay()]}, ${MONTHS[et.getMonth()]} ${et.getDate()}`;
+      time = `${tmrwFmt[1]} ET`;
     } else {
       date = dtLine;
     }
