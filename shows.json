@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-06-21T22:39:47.084Z",
+  "lastUpdated": "2026-06-22T17:58:33.195Z",
   "shows": [
     {
       "title": "The Rookie Show! Vintage to modern baseball RCs!",
@@ -7,6 +7,13 @@
       "time": "5:00 PM ET",
       "type": "big",
       "url": "https://www.whatnot.com/live/21b13995-e691-44c9-882b-492337243ca3?referringSource=profile"
+    },
+    {
+      "title": "Baseball Rookies 70s-80s-90s-00s!",
+      "date": "Tuesday, Jun 23",
+      "time": "4:00 PM ET",
+      "type": "popup",
+      "url": "https://www.whatnot.com/live/d6a59053-90ff-47e8-b238-204434ef240a?referringSource=profile"
     },
     {
       "title": "$1 Start Sports and Pop Culture Extravaganza!",
@@ -42,6 +49,20 @@
       "time": "5:00 PM ET",
       "type": "big",
       "url": "https://www.whatnot.com/live/1e8fe1cf-6448-41d9-bbf7-dd76d8213b0d?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball high numbers and short prints!",
+      "date": "Monday, Aug 10",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/882d442f-b93e-4a82-99cd-44b911d7746e?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball inserts and oddballs!",
+      "date": "Monday, Aug 17",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/9c2ea0ab-2fa1-41fc-bb4d-0c887c2b8882?referringSource=profile"
     }
   ]
 }
