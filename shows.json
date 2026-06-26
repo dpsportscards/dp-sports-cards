@@ -1,13 +1,6 @@
 {
-  "lastUpdated": "2026-06-26T17:11:28.605Z",
+  "lastUpdated": "2026-06-26T21:57:51.748Z",
   "shows": [
-    {
-      "title": "Vintage baseball stars and HOFers",
-      "date": "Friday, Jun 26",
-      "time": "4:30 PM ET",
-      "type": "popup",
-      "url": "https://www.whatnot.com/live/c45b0f3f-bf83-4bf0-9318-06d4dab2bd46?referringSource=profile"
-    },
     {
       "title": "$1 Start Sports and Pop Culture Extravaganza!",
       "date": "Monday",
@@ -56,6 +49,13 @@
       "time": "5:00 PM ET",
       "type": "big",
       "url": "https://www.whatnot.com/live/9c2ea0ab-2fa1-41fc-bb4d-0c887c2b8882?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball food and drink issues!",
+      "date": "Monday, Aug 24",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/6d243d2a-977e-4d42-8a0c-a01d70f4a65d?referringSource=profile"
     }
   ]
 }
