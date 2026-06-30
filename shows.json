@@ -1,16 +1,9 @@
 {
-  "lastUpdated": "2026-06-29T20:32:39.558Z",
+  "lastUpdated": "2026-06-30T10:42:24.226Z",
   "shows": [
     {
-      "title": "$1 Start Sports and Pop Culture Extravaganza!",
-      "date": "Monday, Jun 29",
-      "time": "5:00 PM ET",
-      "type": "big",
-      "url": "https://www.whatnot.com/live/c68f289f-f59b-43be-923c-f11d73dccd9b?referringSource=profile"
-    },
-    {
       "title": "Vintage Baseball Super 60s and 70s!",
-      "date": "Monday, Jul 6",
+      "date": "Monday",
       "time": "5:00 PM ET",
       "type": "big",
       "url": "https://www.whatnot.com/live/29dafbb5-b3f6-4b5c-820c-7308150bb7a0?referringSource=profile"
@@ -62,7 +55,7 @@
       "date": "Monday, Aug 31",
       "time": "5:00 PM ET",
       "type": "big",
-      "url": "https://www.whatnot.com/live/c68f289f-f59b-43be-923c-f11d73dccd9b?referringSource=profile"
+      "url": "https://www.whatnot.com/live/0882a715-8db4-4758-93b9-e9bdab34b02c?referringSource=profile"
     }
   ]
 }
