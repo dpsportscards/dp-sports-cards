@@ -1,6 +1,13 @@
 {
-  "lastUpdated": "2026-09-10T10:59:16.311Z",
+  "lastUpdated": "2026-09-10T16:09:48.188Z",
   "shows": [
+    {
+      "title": "All vintage everything! Baseball stars and HOF, non-sport, Batman, Beatles, etc!",
+      "date": "Thursday, Sep 10",
+      "time": "4:00 PM ET",
+      "type": "popup",
+      "url": "https://www.whatnot.com/live/304f867c-cae9-491b-a4d2-0d44f59ec126?referringSource=profile"
+    },
     {
       "title": "The Rookie Show! Vintage to modern baseball, football, and basketball RC!",
       "date": "Monday",
@@ -56,6 +63,13 @@
       "time": "5:00 PM ET",
       "type": "big",
       "url": "https://www.whatnot.com/live/84c424b0-8033-48f4-ab0a-34899a3d2833?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball multi-player cards!",
+      "date": "Monday, Nov 9",
+      "time": "4:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/06bd7c7d-b759-4d15-9bf1-ce06a7acc7b9?referringSource=profile"
     }
   ]
 }
