@@ -1,13 +1,6 @@
 {
-  "lastUpdated": "2026-10-05T14:09:33.993Z",
+  "lastUpdated": "2026-10-05T22:25:48.083Z",
   "shows": [
-    {
-      "title": "Vintage baseball Hispanic Heritage Month!",
-      "date": "Monday, Oct 5",
-      "time": "5:00 PM ET",
-      "type": "big",
-      "url": "https://www.whatnot.com/live/13e49ef0-7e42-4c4e-87c7-d963c54b0483?referringSource=profile"
-    },
     {
       "title": "Vintage Baseball Super 60s and 70s!",
       "date": "Monday, Oct 12",
@@ -42,6 +35,13 @@
       "time": "4:00 PM ET",
       "type": "big",
       "url": "https://www.whatnot.com/live/06bd7c7d-b759-4d15-9bf1-ce06a7acc7b9?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball pre-war cards!",
+      "date": "Monday, Nov 16",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/3a454f3a-938e-4457-9376-ce0efa0112b2?referringSource=profile"
     }
   ]
 }
