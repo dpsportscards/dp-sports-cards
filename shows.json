@@ -1,4 +1,75 @@
 {
-  "lastUpdated": "2026-11-26T00:05:15.103Z",
-  "shows": []
+  "lastUpdated": "2026-11-26T10:39:39.323Z",
+  "shows": [
+    {
+      "title": "$1 start vintage baseball extravaganza!",
+      "date": "Monday",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/6f083404-04cd-41cc-886d-d69303e7f395?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball fabulous 40s and 50s!",
+      "date": "Monday, Dec 7",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/ad48a6a9-7e20-4989-ab2a-e7e1271c9871?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball high numbers and short prints!",
+      "date": "Monday, Dec 14",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/ae2e7a45-18ad-4467-8897-a45ad0751707?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball food and drink issues!",
+      "date": "Monday, Dec 21",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/02385a9e-8d60-40e5-be78-170910e9bfd7?referringSource=profile"
+    },
+    {
+      "title": "4th annual end of year bulk clean-out! Vintage lots, player lots, complete sets, and more!",
+      "date": "Monday, Dec 28",
+      "time": "5:00 PM ET",
+      "type": "big",
+      "url": "https://www.whatnot.com/live/48cb8324-bd0a-4605-9e40-14d8d966b6af?referringSource=profile"
+    },
+    {
+      "title": "The Rookie Show! Vintage to modern baseball, football, and basketball RC!",
+      "date": "Mon, Jan 4, 2027, 5:00 PM",
+      "time": "",
+      "type": "modern",
+      "url": "https://www.whatnot.com/live/90670f52-1c0f-4d44-9924-ff9e9a78b79e?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball inserts and oddballs!",
+      "date": "Mon, Jan 11, 2027, 5:00 PM",
+      "time": "",
+      "type": "popup",
+      "url": "https://www.whatnot.com/live/005b3714-a02d-4770-9a6e-85fe485136d6?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball super 60s and 70s!",
+      "date": "Mon, Jan 18, 2027, 5:00 PM",
+      "time": "",
+      "type": "popup",
+      "url": "https://www.whatnot.com/live/22dd0e5e-7a54-4b2c-8523-c364bdbdbd70?referringSource=profile"
+    },
+    {
+      "title": "$1 start vintage baseball extravaganza!",
+      "date": "Mon, Jan 25, 2027, 5:00 PM",
+      "time": "",
+      "type": "popup",
+      "url": "https://www.whatnot.com/live/6f083404-04cd-41cc-886d-d69303e7f395?referringSource=profile"
+    },
+    {
+      "title": "Vintage baseball Black History Month show!",
+      "date": "Mon, Feb 1, 2027, 5:00 PM",
+      "time": "",
+      "type": "popup",
+      "url": "https://www.whatnot.com/live/63b54a1c-b8eb-460e-b8be-97c8a7ce37d5?referringSource=profile"
+    }
+  ]
 }
